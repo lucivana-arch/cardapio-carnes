@@ -1,0 +1,407 @@
+<title>Cardápio e Carnes Offline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: coluna única de celular; abas fixas no topo; pesos em fonte de etiqueta de balança */
+:root{
+  --bg:#f2f5f4; --surface:#ffffff; --sunk:#e8edeb; --ink:#1b2422; --muted:#5b6865; --line:#d6dedb;
+  --accent:#8f1d2c; --accent-ink:#ffffff; --accent-soft:#f6e3e5;
+  --good:#1c7548; --warn:#9a5300; --bad:#b3261e; --ice:#1c668c;
+  --warn-soft:#fbeedb; --ice-soft:#e0eff6; --good-soft:#dff2e8;
+  --display:"Bricolage Grotesque","IBM Plex Sans",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#111615; --surface:#1a2120; --sunk:#232b29; --ink:#e7eeeb; --muted:#9aa8a4; --line:#2e3836;
+  --accent:#e8808b; --accent-ink:#22090d; --accent-soft:#3a1c20;
+  --good:#63c594; --warn:#e3a550; --bad:#f27d74; --ice:#74bde0;
+  --warn-soft:#3a2c14; --ice-soft:#16303d; --good-soft:#173326; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#111615; --surface:#1a2120; --sunk:#232b29; --ink:#e7eeeb; --muted:#9aa8a4; --line:#2e3836;
+  --accent:#e8808b; --accent-ink:#22090d; --accent-soft:#3a1c20;
+  --good:#63c594; --warn:#e3a550; --bad:#f27d74; --ice:#74bde0;
+  --warn-soft:#3a2c14; --ice-soft:#16303d; --good-soft:#173326; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:720px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 64px;display:flex;flex-direction:column;gap:16px}
+h1{font-family:var(--display);font-weight:700;font-size:28px;line-height:1.1;margin:0;letter-spacing:-.01em}
+h2{font-family:var(--display);font-weight:700;font-size:18px;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);display:flex;gap:6px;padding-block:8px;border-bottom:1px solid var(--line)}
+.tab{flex:1;min-width:0;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:500 14px var(--body);padding:10px 6px;border-radius:8px;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.badge{display:inline-block;min-width:18px;padding:0 5px;margin-left:4px;border-radius:9px;background:var(--warn);color:var(--surface);font:500 11px/18px var(--mono)}
+button{font-family:var(--body)}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:500 14px var(--body);padding:9px 12px;border-radius:8px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--muted);padding:9px 6px}
+.btn.danger{color:var(--bad)}
+.btn:disabled{opacity:.5;cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.spread{justify-content:space-between}
+.day{display:flex;flex-direction:column;gap:8px}
+.dayhead{display:flex;align-items:baseline;gap:8px;font-family:var(--display);font-weight:700;font-size:16px}
+.dayhead .num{font-size:13px;color:var(--muted);font-weight:400}
+.today{font:500 11px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.week{font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:8px}
+.meal{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.meal.done{background:transparent}
+.meal.done .prato{color:var(--muted)}
+.turno{font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.prato{margin:0}
+.chip{display:inline-flex;gap:6px;align-items:baseline;padding:3px 8px;border-radius:6px;background:var(--sunk);font-size:13px}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.ice{background:var(--ice-soft);color:var(--ice)}
+.chip.good{background:var(--good-soft);color:var(--good)}
+.panel{border-top:1px dashed var(--line);padding-top:10px;display:flex;flex-direction:column;gap:10px}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
+input,select,textarea{font:400 15px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;min-width:0}
+input[type=number]{font-family:var(--mono)}
+input[type=checkbox]{width:18px;height:18px;padding:0}
+textarea{min-height:72px;resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:14px}
+.alloc{display:grid;grid-template-columns:1fr 104px;gap:8px;align-items:center}
+.alloc small{color:var(--muted);display:block}
+.prod{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--sunk)}
+.bar i{display:block;height:100%}
+.bar .c{background:var(--muted)} .bar .p{background:var(--accent)} .bar .l{background:var(--good)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted)}
+.legend b{font:500 12.5px var(--mono);color:var(--ink)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px}
+.pk{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+.pk .info{min-width:0;flex:1 1 180px}
+.pk small{color:var(--muted);display:block}
+.alert{border-left:3px solid var(--warn);background:var(--warn-soft);color:var(--ink);padding:9px 12px;border-radius:0 8px 8px 0;font-size:14px}
+.alert.bad{border-color:var(--bad)}
+.alerts{display:flex;flex-direction:column;gap:6px}
+.stats{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13.5px;color:var(--muted)}
+.stats b{font:500 15px var(--mono);color:var(--ink)}
+.empty{border:1px dashed var(--line);border-radius:10px;padding:24px 16px;text-align:center;color:var(--muted)}
+.rules{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;max-width:65ch}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px);z-index:20}
+@media (max-width:420px){ .grid2{grid-template-columns:1fr} }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Cardápio e Carnes</h1>
+    <p class="sub">Planejamento das refeições e baixa do estoque só quando o consumo é confirmado. Os dados ficam guardados neste navegador.</p>
+  </header>
+  <div class="stats" id="stats"></div>
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="cardapio" id="tab-cardapio">Cardápio</button>
+    <button class="tab" role="tab" data-tab="estoque" id="tab-estoque">Estoque</button>
+    <button class="tab" role="tab" data-tab="regras" id="tab-regras">Regras</button>
+  </nav>
+  <main id="view"></main>
+</div>
+<div id="toast" hidden></div>
+
+<script>
+const S = { carnes: [], refeicoes: [], regras: [], ready: { c: false, r: false }, error: "" };
+const ui = { tab: "cardapio", form: null, id: null, busy: false, confirmDel: null, gen: null, pending: false };
+let db = null, sample = null;
+const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const kg = g => (Math.round(g || 0) / 1000).toFixed(3).replace(".", ",") + " kg";
+const pd = iso => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d); };
+const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const dm = s => s ? s.slice(8, 10) + "/" + s.slice(5, 7) : "";
+const hoje = () => iso(new Date());
+const int = v => Math.max(0, Math.round(Number(String(v).replace(",", ".")) || 0));
+function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
+
+/* ---------- cálculos de estoque ---------- */
+function produtos() {
+  const map = new Map();
+  for (const c of S.carnes) {
+    if (!map.has(c.produto)) map.set(c.produto, { nome: c.produto, pacotes: [], inicial: 0, saldo: 0, planejado: 0 });
+    const p = map.get(c.produto); p.pacotes.push(c); p.inicial += c.pesoInicial || 0; p.saldo += c.saldo || 0;
+  }
+  for (const r of S.refeicoes) if (!r.feito && r.produto && map.has(r.produto)) map.get(r.produto).planejado += r.planejado || 0;
+  return [...map.values()];
+}
+function alertas() {
+  const out = [], t = hoje();
+  for (const p of produtos()) {
+    if (p.planejado > p.saldo + 20) out.push({ bad: true, txt: `${p.nome}: o cardápio pede ${kg(p.planejado)} e o saldo é ${kg(p.saldo)}. Faltam ${kg(p.planejado - p.saldo)}.` });
+    const frescos = p.pacotes.filter(c => !c.congelado && c.saldo > 0 && c.validade);
+    const vencidos = frescos.filter(c => c.validade < t);
+    if (vencidos.length) out.push({ bad: true, txt: `${p.nome}: ${vencidos.length} pacote(s) fora do congelador com validade vencida (${dm(vencidos[0].validade)}). Confira antes de usar.` });
+    const datas = [...new Set(frescos.filter(c => c.validade >= t).map(c => c.validade))].sort();
+    for (const v of datas) {
+      const estoque = frescos.filter(c => c.validade >= t && c.validade <= v).reduce((a, c) => a + c.saldo, 0);
+      const uso = S.refeicoes.filter(r => !r.feito && r.produto === p.nome && r.data <= v).reduce((a, r) => a + (r.planejado || 0), 0);
+      if (estoque - uso > 20) { out.push({ txt: `${p.nome}: cerca de ${kg(estoque - uso)} só será usado depois da validade (${dm(v)}). Congele essa parte até lá.` }); break; }
+    }
+  }
+  const semEstoque = [...new Set(S.refeicoes.filter(r => !r.feito && r.produto && !S.carnes.some(c => c.produto === r.produto)).map(r => r.produto))];
+  if (semEstoque.length) out.push({ txt: `Sem estoque registrado para: ${semEstoque.join(", ")}. Compre ou cadastre o pacote.` });
+  return out;
+}
+
+/* ---------- renderização ---------- */
+function render() {
+  if (ui.form && document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && render.fromSnap) { ui.pending = true; return; }
+  ui.pending = false;
+  for (const b of document.querySelectorAll(".tab")) b.setAttribute("aria-selected", b.dataset.tab === ui.tab);
+  const v = document.getElementById("view"), st = document.getElementById("stats");
+  if (S.error) { st.innerHTML = ""; v.innerHTML = `<div class="empty">${esc(S.error)}</div>`; return; }
+  if (!S.ready.c || !S.ready.r) { st.innerHTML = ""; v.innerHTML = `<div class="empty">Carregando cardápio e estoque…</div>`; return; }
+  const ps = produtos(), al = alertas();
+  const saldo = ps.reduce((a, p) => a + p.saldo, 0), plan = ps.reduce((a, p) => a + p.planejado, 0);
+  const pend = S.refeicoes.filter(r => !r.feito).length;
+  st.innerHTML = `<span><b>${kg(saldo)}</b> em estoque</span><span><b>${kg(plan)}</b> reservado no cardápio</span><span><b>${pend}</b> refeições a fazer</span>`;
+  document.getElementById("tab-estoque").innerHTML = "Estoque" + (al.length ? `<span class="badge">${al.length}</span>` : "");
+  v.innerHTML = ui.tab === "cardapio" ? viewCardapio() : ui.tab === "estoque" ? viewEstoque(ps, al) : viewRegras();
+}
+function snapRender() { render.fromSnap = true; render(); render.fromSnap = false; }
+
+function semana(d) { const x = pd(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return iso(x); }
+function viewCardapio() {
+  const rs = [...S.refeicoes].sort((a, b) => a.data.localeCompare(b.data) || (a.turno === "almoco" ? -1 : 1) - (b.turno === "almoco" ? -1 : 1));
+  let h = `<div class="day" style="gap:14px">`;
+  h += `<div class="row spread"><h2>Refeições</h2><div class="row">${sample ? `<button class="btn" data-act="gen-open">Montar próxima semana</button>` : ""}<button class="btn" data-act="meal-new">Nova refeição</button></div></div>`;
+  if (ui.form === "gen") h += genPanel();
+  if (ui.form === "meal" && ui.id === "new") h += `<div class="meal">${mealForm({ data: hoje(), turno: "almoco", prato: "", produto: "", planejado: 0 })}</div>`;
+  if (!rs.length) h += `<div class="empty">Nenhuma refeição no cardápio. Use “Nova refeição”${sample ? " ou “Montar próxima semana”" : ""} para começar.</div>`;
+  let lastDay = "", lastWeek = "";
+  for (const r of rs) {
+    const w = semana(r.data);
+    if (w !== lastWeek) { if (lastDay) h += `</div>`; lastDay = ""; h += `<div class="week">Semana de ${dm(w)}</div>`; lastWeek = w; }
+    if (r.data !== lastDay) {
+      if (lastDay) h += `</div>`;
+      h += `<div class="day"><div class="dayhead">${DIAS[pd(r.data).getDay()]} <span class="num">${dm(r.data)}</span>${r.data === hoje() ? `<span class="today">hoje</span>` : ""}</div>`;
+      lastDay = r.data;
+    }
+    h += mealCard(r);
+  }
+  if (lastDay) h += `</div>`;
+  return h + `</div>`;
+}
+function mealCard(r) {
+  const temEstoque = r.produto && S.carnes.some(c => c.produto === r.produto);
+  let chip = "";
+  if (r.feito) chip = `<span class="chip good">Feito${r.consumido ? ` · <span class="num">${kg(r.consumido)}</span> ${esc(r.produto)}` : ""}</span>`;
+  else if (r.produto) chip = `<span class="chip${temEstoque ? "" : " warn"}">${esc(r.produto)}${r.planejado ? ` <span class="num">${kg(r.planejado)}</span>` : ""}${temEstoque ? "" : " · sem estoque"}</span>`;
+  let h = `<div class="meal${r.feito ? " done" : ""}"><div class="row spread"><span class="turno">${r.turno === "almoco" ? "Almoço" : "Jantar"}</span>${chip}</div><p class="prato">${esc(r.prato)}</p>`;
+  if (ui.form === "baixa" && ui.id === r.id) h += baixaPanel(r);
+  else if (ui.form === "meal" && ui.id === r.id) h += mealForm(r);
+  else h += `<div class="row">${r.feito
+    ? `<button class="btn quiet" data-act="undo" data-id="${r.id}">Desfazer baixa</button>`
+    : `<button class="btn primary" data-act="baixa-open" data-id="${r.id}">Confirmar consumo</button><button class="btn quiet" data-act="meal-edit" data-id="${r.id}">Editar</button>`}</div>`;
+  return h + `</div>`;
+}
+function baixaPanel(r) {
+  const pk = S.carnes.filter(c => c.produto === r.produto && c.saldo > 0).sort((a, b) => (a.congelado - b.congelado) || String(a.validade).localeCompare(String(b.validade)) || a.saldo - b.saldo);
+  let h = `<div class="panel">`;
+  if (!pk.length) h += `<p class="prato" style="color:var(--muted)">${r.produto ? "Não há pacote de " + esc(r.produto) + " com saldo. A refeição será marcada como feita sem baixa." : "Refeição sem carne do estoque. Será apenas marcada como feita."}</p>`;
+  else {
+    h += `<div style="font-size:13px;color:var(--muted)">Quanto saiu de cada pacote, em gramas (planejado: <span class="num">${kg(r.planejado)}</span>)</div>`;
+    let falta = r.planejado || 0;
+    for (const c of pk) { const g = Math.min(falta, c.saldo); falta -= g;
+      h += `<div class="alloc"><div>${esc(c.rotulo || c.produto)}<small class="num">saldo ${kg(c.saldo)}${c.congelado ? " · congelado" : c.validade ? " · val. " + dm(c.validade) : ""}</small></div><input type="number" inputmode="numeric" min="0" max="${c.saldo}" step="1" id="bx-${c.id}" data-bx="${c.id}" value="${g}" aria-label="Gramas de ${esc(c.rotulo || c.produto)}"></div>`; }
+  }
+  return h + `<div class="row"><button class="btn primary" data-act="baixa-ok" data-id="${r.id}">Dar baixa</button><button class="btn quiet" data-act="cancel">Cancelar</button></div></div>`;
+}
+function prodOptions() { return [...new Set([...S.carnes.map(c => c.produto), ...S.refeicoes.map(r => r.produto)].filter(Boolean))].sort().map(p => `<option value="${esc(p)}"></option>`).join(""); }
+function mealForm(r) {
+  const isNew = !r.id;
+  return `<div class="panel">
+    <div class="grid2"><label>Data<input type="date" id="mf-data" value="${esc(r.data)}"></label>
+    <label>Refeição<select id="mf-turno"><option value="almoco"${r.turno === "almoco" ? " selected" : ""}>Almoço</option><option value="jantar"${r.turno === "jantar" ? " selected" : ""}>Jantar</option></select></label></div>
+    <label>Prato<textarea id="mf-prato">${esc(r.prato)}</textarea></label>
+    <div class="grid2"><label>Carne (vazio se não usa)<input id="mf-produto" list="prods" value="${esc(r.produto)}"></label>
+    <label>Planejado (g)<input type="number" inputmode="numeric" min="0" step="10" id="mf-plan" value="${r.planejado || 0}"></label></div>
+    <datalist id="prods">${prodOptions()}</datalist>
+    <div class="row"><button class="btn primary" data-act="meal-save" data-id="${isNew ? "new" : r.id}">Salvar</button><button class="btn quiet" data-act="cancel">Cancelar</button>
+    ${isNew ? "" : `<button class="btn quiet danger" data-act="meal-del" data-id="${r.id}">${ui.confirmDel === r.id ? "Confirmar exclusão" : "Excluir"}</button>`}</div></div>`;
+}
+function genPanel() {
+  const g = ui.gen;
+  let h = `<div class="meal"><span class="turno">Montar cardápio com o saldo livre</span>`;
+  if (g.state === "idle") h += `<div class="grid2"><label>Segunda-feira da semana<input type="date" id="gen-ini" value="${g.ini}"></label><label>Pessoas por refeição<input type="number" id="gen-pes" min="1" max="20" value="${g.pes}"></label></div>
+    <div class="row"><button class="btn primary" data-act="gen-run">Montar</button><button class="btn quiet" data-act="cancel">Cancelar</button></div>
+    <p class="prato" style="font-size:13px;color:var(--muted)">O Claude segue as regras da aba Regras e usa só o que sobra depois das refeições já planejadas. Você revisa antes de salvar.</p>`;
+  else if (g.state === "run") h += `<p class="prato">Montando o cardápio… pode levar até um minuto.</p>`;
+  else {
+    for (const r of g.itens) h += `<div class="pk"><div class="info"><b>${DIAS[pd(r.data).getDay()]} ${dm(r.data)} · ${r.turno === "almoco" ? "almoço" : "jantar"}</b><small style="color:var(--ink)">${esc(r.prato)}</small>${r.produto ? `<small class="num">${esc(r.produto)} ${kg(r.planejado)}</small>` : ""}</div></div>`;
+    h += `<div class="row"><button class="btn primary" data-act="gen-save">Adicionar ao cardápio</button><button class="btn quiet" data-act="cancel">Descartar</button></div>`;
+  }
+  return h + `</div>`;
+}
+
+function viewEstoque(ps, al) {
+  let h = `<div class="day" style="gap:14px">`;
+  if (al.length) h += `<div class="alerts">${al.map(a => `<div class="alert${a.bad ? " bad" : ""}">${esc(a.txt)}</div>`).join("")}</div>`;
+  h += `<div class="row spread"><h2>Carnes por produto</h2><button class="btn" data-act="pk-new">Novo pacote</button></div>`;
+  if (ui.form === "pk" && ui.id === "new") h += `<div class="prod">${pkForm({ produto: "", rotulo: "", pesoInicial: 0, saldo: 0, validade: "", congelado: false, obs: "" })}</div>`;
+  if (!ps.length) h += `<div class="empty">Nenhum pacote cadastrado. Use “Novo pacote” para registrar a carne com o peso da etiqueta.</div>`;
+  for (const p of ps.sort((a, b) => a.nome.localeCompare(b.nome))) {
+    const cons = p.inicial - p.saldo, res = Math.min(p.planejado, p.saldo), livre = Math.max(0, p.saldo - p.planejado), tot = Math.max(p.inicial, 1);
+    h += `<div class="prod"><div class="row spread"><h2>${esc(p.nome)}</h2><span class="num"><b>${kg(p.saldo)}</b></span></div>
+      <div class="bar" role="img" aria-label="Consumido ${kg(cons)}, reservado ${kg(res)}, livre ${kg(livre)}"><i class="c" style="width:${cons / tot * 100}%"></i><i class="p" style="width:${res / tot * 100}%"></i><i class="l" style="width:${livre / tot * 100}%"></i></div>
+      <div class="legend"><span>Inicial <b>${kg(p.inicial)}</b></span><span><i class="dot" style="background:var(--muted)"></i>Consumido <b>${kg(cons)}</b></span><span><i class="dot" style="background:var(--accent)"></i>Reservado <b>${kg(p.planejado)}</b></span><span><i class="dot" style="background:var(--good)"></i>Livre <b>${kg(livre)}</b></span></div><div>`;
+    for (const c of p.pacotes.sort((a, b) => String(a.rotulo).localeCompare(String(b.rotulo)))) {
+      if (ui.form === "pk" && ui.id === c.id) { h += `<div class="pk">${pkForm(c)}</div>`; continue; }
+      h += `<div class="pk"><div class="info">${esc(c.rotulo || c.produto)} <span class="num">${kg(c.saldo)}</span>${c.saldo !== c.pesoInicial ? ` <small style="display:inline" class="num">de ${kg(c.pesoInicial)}</small>` : ""}
+        <small>${c.validade ? "Validade " + dm(c.validade) : "Sem validade registrada"}${c.estimado ? " · peso estimado" : ""}${c.obs ? " · " + esc(c.obs) : ""}</small></div>
+        <div class="row"><button class="btn${c.congelado ? "" : " quiet"}" data-act="pk-freeze" data-id="${c.id}" aria-pressed="${!!c.congelado}">${c.congelado ? `<span style="color:var(--ice)">Congelado</span>` : "Congelar"}</button><button class="btn quiet" data-act="pk-edit" data-id="${c.id}">Editar</button></div></div>`;
+    }
+    h += `</div></div>`;
+  }
+  return h + `</div>`;
+}
+function pkForm(c) {
+  const isNew = !c.id;
+  return `<div class="panel" style="border:0;padding:0;width:100%">
+    <div class="grid2"><label>Produto<input id="pf-produto" list="prods" value="${esc(c.produto)}"></label><label>Identificação do pacote<input id="pf-rotulo" value="${esc(c.rotulo)}" placeholder="Pacote 1,140 kg"></label></div>
+    <div class="grid2"><label>Peso da etiqueta (g)<input type="number" inputmode="numeric" min="0" id="pf-peso" value="${c.pesoInicial || 0}"></label><label>Saldo atual (g)<input type="number" inputmode="numeric" min="0" id="pf-saldo" value="${c.saldo || 0}"></label></div>
+    <div class="grid2"><label>Validade<input type="date" id="pf-val" value="${esc(c.validade)}"></label><label>Observação<input id="pf-obs" value="${esc(c.obs)}"></label></div>
+    <label class="check"><input type="checkbox" id="pf-cong"${c.congelado ? " checked" : ""}> Está no congelador</label>
+    <label class="check"><input type="checkbox" id="pf-est"${c.estimado ? " checked" : ""}> Peso estimado (ainda não conferido)</label>
+    <datalist id="prods">${prodOptions()}</datalist>
+    <div class="row"><button class="btn primary" data-act="pk-save" data-id="${isNew ? "new" : c.id}">Salvar</button><button class="btn quiet" data-act="cancel">Cancelar</button>
+    ${isNew ? "" : `<button class="btn quiet danger" data-act="pk-del" data-id="${c.id}">${ui.confirmDel === c.id ? "Confirmar exclusão" : "Excluir"}</button>`}</div></div>`;
+}
+function viewRegras0() {
+  if (ui.form === "regras") return `<div class="day"><h2>Regras do cardápio</h2><label>Uma regra por linha<textarea id="rg-txt" style="min-height:320px">${esc(S.regras.join("\n"))}</textarea></label><div class="row"><button class="btn primary" data-act="rg-save">Salvar</button><button class="btn quiet" data-act="cancel">Cancelar</button></div></div>`;
+  return `<div class="day" style="gap:14px"><div class="row spread"><h2>Regras do cardápio</h2><button class="btn" data-act="rg-edit">Editar</button></div>${S.regras.length ? `<ul class="rules">${S.regras.map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : `<div class="empty">Nenhuma regra registrada. Elas orientam a montagem automática do cardápio.</div>`}</div>`;
+}
+
+function viewRegras() {
+  if (ui.form === "regras") return viewRegras0();
+  return viewRegras0() + `<div class="prod" style="margin-top:20px"><h2>Cópia de segurança</h2>
+    <p class="prato" style="color:var(--muted);font-size:14px">Os dados ficam só neste navegador e somem se o histórico do site for apagado. Copie os dados de vez em quando e guarde o texto (em uma nota ou mensagem). Para levar a outro aparelho, cole o texto lá e restaure.</p>
+    <div class="row"><button class="btn" data-act="bk-copy">Copiar dados</button></div>
+    <label>Colar dados para restaurar<textarea id="bk-txt"></textarea></label>
+    <div class="row"><button class="btn danger" data-act="bk-restore">${ui.confirmDel === "bk" ? "Confirmar: substituir tudo" : "Restaurar"}</button></div></div>`;
+}
+/* ---------- ações ---------- */
+const val = id => document.getElementById(id)?.value ?? "";
+async function run(fn, ok) { if (ui.busy) return; ui.busy = true; try { await fn(); if (ok) toast(ok); } catch (e) { toast("Não foi possível salvar" + (e && e.code ? " (" + e.code + ")" : "") + ". Tente de novo."); } ui.busy = false; }
+function close() { ui.form = null; ui.id = null; ui.confirmDel = null; ui.gen = null; render(); }
+
+async function act(a, id) {
+  const meal = S.refeicoes.find(r => r.id === id), pk = S.carnes.find(c => c.id === id);
+  if (a === "cancel") return close();
+  if (a === "bk-copy") { const txt = JSON.stringify(store), box = document.getElementById("bk-txt");
+    try { await navigator.clipboard.writeText(txt); toast("Dados copiados"); } catch (e) { box.value = txt; box.select(); toast("Selecione e copie o texto da caixa"); } return; }
+  if (a === "bk-restore") { let d = null; const txt = val("bk-txt");
+    try { d = JSON.parse(txt); } catch (e) {}
+    if (!d || typeof d.carnes !== "object" || typeof d.refeicoes !== "object") return toast("O texto colado não é uma cópia válida.");
+    if (ui.confirmDel !== "bk") { ui.confirmDel = "bk"; render(); document.getElementById("bk-txt").value = txt; return; }
+    store = { carnes: d.carnes || {}, refeicoes: d.refeicoes || {}, config: d.config || {} }; ui.confirmDel = null; commit(); return toast("Dados restaurados"); }
+  if (a === "meal-new") { ui.form = "meal"; ui.id = "new"; return render(); }
+  if (a === "meal-edit") { ui.form = "meal"; ui.id = id; ui.confirmDel = null; return render(); }
+  if (a === "baixa-open") { ui.form = "baixa"; ui.id = id; return render(); }
+  if (a === "pk-new") { ui.form = "pk"; ui.id = "new"; return render(); }
+  if (a === "pk-edit") { ui.form = "pk"; ui.id = id; ui.confirmDel = null; return render(); }
+  if (a === "rg-edit") { ui.form = "regras"; return render(); }
+  if (a === "meal-save") {
+    const d = { data: val("mf-data"), turno: val("mf-turno"), prato: val("mf-prato").trim(), produto: val("mf-produto").trim(), planejado: int(val("mf-plan")) };
+    if (!d.data || !d.prato) return toast("Informe a data e o prato.");
+    return run(async () => { if (id === "new") await db.collection("refeicoes").add({ ...d, feito: false, consumido: 0, baixas: [] }); else await db.doc("refeicoes/" + id).update(d); close(); }, "Refeição salva");
+  }
+  if (a === "meal-del" || a === "pk-del") {
+    if (ui.confirmDel !== id) { ui.confirmDel = id; return render(); }
+    return run(async () => { await db.doc((a === "meal-del" ? "refeicoes/" : "carnes/") + id).delete(); close(); }, "Excluído");
+  }
+  if (a === "baixa-ok" && meal) {
+    const baixas = [...document.querySelectorAll("[data-bx]")].map(i => ({ id: i.dataset.bx, g: int(i.value) })).filter(b => b.g > 0);
+    for (const b of baixas) { const c = S.carnes.find(x => x.id === b.id); if (!c || b.g > c.saldo) return toast("A quantidade passa do saldo do pacote."); }
+    return run(async () => {
+      for (const b of baixas) { const c = S.carnes.find(x => x.id === b.id); await db.doc("carnes/" + b.id).update({ saldo: c.saldo - b.g }); }
+      await db.doc("refeicoes/" + id).update({ feito: true, baixas, consumido: baixas.reduce((s, b) => s + b.g, 0) }); close();
+    }, "Consumo confirmado");
+  }
+  if (a === "undo" && meal) return run(async () => {
+    for (const b of meal.baixas || []) { const c = S.carnes.find(x => x.id === b.id); if (c) await db.doc("carnes/" + b.id).update({ saldo: c.saldo + b.g }); }
+    await db.doc("refeicoes/" + id).update({ feito: false, baixas: [], consumido: 0 });
+  }, "Baixa desfeita, saldo devolvido");
+  if (a === "pk-freeze" && pk) return run(() => db.doc("carnes/" + id).update({ congelado: !pk.congelado }));
+  if (a === "pk-save") {
+    const d = { produto: val("pf-produto").trim(), rotulo: val("pf-rotulo").trim(), pesoInicial: int(val("pf-peso")), saldo: int(val("pf-saldo")), validade: val("pf-val"), obs: val("pf-obs").trim(), congelado: document.getElementById("pf-cong").checked, estimado: document.getElementById("pf-est").checked };
+    if (!d.produto || !d.pesoInicial) return toast("Informe o produto e o peso.");
+    if (id === "new" && !d.saldo) d.saldo = d.pesoInicial;
+    if (!d.rotulo) d.rotulo = "Pacote " + kg(d.pesoInicial);
+    return run(async () => { if (id === "new") await db.collection("carnes").add(d); else await db.doc("carnes/" + id).update(d); close(); }, "Pacote salvo");
+  }
+  if (a === "rg-save") { const itens = val("rg-txt").split("\n").map(s => s.trim()).filter(Boolean); return run(async () => { await db.doc("config/regras").set({ itens }); close(); }, "Regras salvas"); }
+  if (a === "gen-open") {
+    const ult = S.refeicoes.reduce((m, r) => r.data > m ? r.data : m, hoje()), d = pd(ult);
+    do d.setDate(d.getDate() + 1); while (d.getDay() !== 1);
+    ui.form = "gen"; ui.gen = { state: "idle", ini: iso(d), pes: 3, itens: [] }; return render();
+  }
+  if (a === "gen-run") return gerar();
+  if (a === "gen-save") return run(async () => { for (const r of ui.gen.itens) await db.collection("refeicoes").add({ ...r, feito: false, consumido: 0, baixas: [] }); close(); }, "Cardápio adicionado");
+}
+async function gerar() {
+  const ini = val("gen-ini"), pes = Math.max(1, int(val("gen-pes")));
+  if (!ini) return toast("Escolha a data inicial.");
+  const dias = []; const d = pd(ini);
+  for (let i = 0; i < 5; i++) { if (d.getDay() >= 1 && d.getDay() <= 5) dias.push(iso(d) + " (" + DIAS[d.getDay()] + ")"); d.setDate(d.getDate() + 1); }
+  const livres = produtos().map(p => ({ produto: p.nome, livre_g: Math.max(0, p.saldo - p.planejado) })).filter(p => p.livre_g > 0);
+  const recentes = S.refeicoes.map(r => r.prato).slice(-20);
+  ui.gen = { state: "run", ini, pes, itens: [] }; render();
+  const prompt = `Monte um cardápio caseiro brasileiro, em português, para ${pes} pessoa(s), nas datas: ${dias.join(", ")}.
+Regras da casa (siga todas; tudo deve ser sem glúten):
+${S.regras.map(r => "- " + r).join("\n")}
+Carnes disponíveis (saldo livre em gramas), use apenas estas no campo "produto" e não ultrapasse o saldo somado: ${JSON.stringify(livres)}
+Se uma refeição não usar carne do estoque, deixe "produto" vazio e "planejado" 0.
+Pratos já servidos recentemente (evite repetir): ${JSON.stringify(recentes)}
+Responda somente com JSON: {"refeicoes":[{"data":"AAAA-MM-DD","turno":"almoco"|"jantar","prato":"descrição com acompanhamentos","produto":"nome exato ou vazio","planejado":gramas inteiros}]}`;
+  try {
+    const out = await sample.json(prompt, { cache: false });
+    const nomes = new Set(livres.map(l => l.produto));
+    const itens = (out && out.refeicoes || []).filter(r => /^\d{4}-\d\d-\d\d$/.test(r.data) && r.prato).map(r => ({ data: r.data, turno: r.turno === "jantar" ? "jantar" : "almoco", prato: String(r.prato), produto: nomes.has(r.produto) ? r.produto : "", planejado: nomes.has(r.produto) ? int(r.planejado) : 0 }));
+    if (!itens.length) throw 0;
+    ui.gen = { state: "done", ini, pes, itens }; render();
+  } catch (e) { close(); toast(e && e.code === "not_granted" ? "Sem permissão para usar o Claude nesta página." : "Não foi possível montar o cardápio agora."); }
+}
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-tab]"); if (t) { ui.tab = t.dataset.tab; ui.form = null; ui.id = null; ui.gen = null; return render(); }
+  const b = e.target.closest("[data-act]"); if (b) act(b.dataset.act, b.dataset.id);
+});
+document.addEventListener("focusout", () => { if (ui.pending) setTimeout(() => { if (ui.pending && !(document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) render(); }, 50); });
+
+/* ---------- dados (guardados no navegador) ---------- */
+const KEY = "cardapio-carnes-v1";
+const SEED = {"carnes": {"paleta-1": {"produto": "Paleta bovina", "rotulo": "Pacote 1,140 kg", "pesoInicial": 1140, "saldo": 1140, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 49,00"}, "paleta-2": {"produto": "Paleta bovina", "rotulo": "Pacote 0,750 kg", "pesoInicial": 750, "saldo": 750, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 32,24"}, "paleta-3": {"produto": "Paleta bovina", "rotulo": "Pacote 1,192 kg", "pesoInicial": 1192, "saldo": 1192, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 51,24"}, "patinho-1": {"produto": "Patinho", "rotulo": "Pacote 0,834 kg", "pesoInicial": 834, "saldo": 834, "validade": "2026-11-18", "congelado": false, "estimado": true, "obs": "R$ 40,02; etiqueta borrada na foto, conferir peso"}, "coxao-1": {"produto": "Coxão-mole", "rotulo": "Pacote 1,028 kg", "pesoInicial": 1028, "saldo": 1028, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 50,36"}, "coxao-2": {"produto": "Coxão-mole", "rotulo": "Pacote 1,004 kg", "pesoInicial": 1004, "saldo": 1004, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 49,18"}, "frango-1": {"produto": "Filé de frango", "rotulo": "Pacote 1,272 kg", "pesoInicial": 1272, "saldo": 1272, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 31,78"}, "filesobre-1": {"produto": "Filé de sobrecoxa temperado", "rotulo": "Pacote 0,610 kg", "pesoInicial": 610, "saldo": 610, "validade": "2026-10-31", "congelado": true, "estimado": false, "obs": "R$ 21,34; embalado 12/10; tempero sem lista de ingredientes, confirmar glúten"}, "sobrecoxa-1": {"produto": "Sobrecoxa temperada", "rotulo": "Pacote 0,574 kg", "pesoInicial": 574, "saldo": 574, "validade": "2026-11-01", "congelado": true, "estimado": false, "obs": "embalado 13/10; tempero sem lista de ingredientes, confirmar glúten"}, "pernil-1": {"produto": "Linguiça de pernil (suína)", "rotulo": "Jerivá, bandeja ~1 kg", "pesoInicial": 1000, "saldo": 1000, "validade": "", "congelado": true, "estimado": true, "obs": "rótulo: não contém glúten; pesar"}, "lingfrango-1": {"produto": "Linguiça de frango", "rotulo": "Pacote 1 de 500 g", "pesoInicial": 500, "saldo": 500, "validade": "", "congelado": false, "estimado": true, "obs": "conferir rótulo (glúten) e validade"}, "lingfrango-2": {"produto": "Linguiça de frango", "rotulo": "Pacote 2 de 500 g", "pesoInicial": 500, "saldo": 500, "validade": "", "congelado": false, "estimado": true, "obs": "conferir rótulo (glúten) e validade"}}, "refeicoes": {"1110-a": {"data": "2026-11-10", "turno": "almoco", "prato": "Paleta bovina com mandioca na panela de pressão, arroz branco, couve refogada e chuchu refogado.", "produto": "Paleta bovina", "planejado": 750, "feito": false, "consumido": 0, "baixas": []}, "1110-j": {"data": "2026-11-10", "turno": "jantar", "prato": "Sopa de paleta bovina com cenoura, chuchu, abóbora e batata-salsa picadinha.", "produto": "Paleta bovina", "planejado": 400, "feito": false, "consumido": 0, "baixas": []}, "1111-a": {"data": "2026-11-11", "turno": "almoco", "prato": "Frango com creme de milho, arroz branco e couve-flor no vapor.", "produto": "Filé de frango", "planejado": 450, "feito": false, "consumido": 0, "baixas": []}, "1111-j": {"data": "2026-11-11", "turno": "jantar", "prato": "Salada de quinoa com frango desfiado, castanha de caju, milho e ervilha.", "produto": "Filé de frango", "planejado": 270, "feito": false, "consumido": 0, "baixas": []}, "1112-a": {"data": "2026-11-12", "turno": "almoco", "prato": "Arroz com linguiça de porco, cenoura e cheiro-verde, acompanhado de jiló refogado.", "produto": "Linguiça de pernil (suína)", "planejado": 500, "feito": false, "consumido": 0, "baixas": []}, "1112-j": {"data": "2026-11-12", "turno": "jantar", "prato": "Panqueca sem glúten de carne moída com molho de tomate caseiro.", "produto": "Patinho", "planejado": 400, "feito": false, "consumido": 0, "baixas": []}, "1113-a": {"data": "2026-11-13", "turno": "almoco", "prato": "Strogonoff de frango, arroz branco, batata palha sem glúten e brócolis no vapor.", "produto": "Filé de frango", "planejado": 550, "feito": false, "consumido": 0, "baixas": []}, "1116-a": {"data": "2026-11-16", "turno": "almoco", "prato": "Bife de coxão-mole acebolado, arroz branco, feijão e berinjela empanada sem glúten.", "produto": "Coxão-mole", "planejado": 1000, "feito": false, "consumido": 0, "baixas": []}, "1116-j": {"data": "2026-11-16", "turno": "jantar", "prato": "Macarrão proteico de lentilha vermelha com molho bolonhesa caseiro.", "produto": "Patinho", "planejado": 430, "feito": false, "consumido": 0, "baixas": []}, "1117-a": {"data": "2026-11-17", "turno": "almoco", "prato": "Carne de panela com cenoura, chuchu refogado separado, arroz branco e farofa de ovo sem glúten.", "produto": "Paleta bovina", "planejado": 1000, "feito": false, "consumido": 0, "baixas": []}, "1117-j": {"data": "2026-11-17", "turno": "jantar", "prato": "Filé de sobrecoxa temperado assado com brócolis e couve-flor no vapor.", "produto": "Filé de sobrecoxa temperado", "planejado": 610, "feito": false, "consumido": 0, "baixas": []}, "1118-a": {"data": "2026-11-18", "turno": "almoco", "prato": "Sobrecoxa temperada assada, purê de batata-salsa e arroz com brócolis.", "produto": "Sobrecoxa temperada", "planejado": 574, "feito": false, "consumido": 0, "baixas": []}, "1118-j": {"data": "2026-11-18", "turno": "jantar", "prato": "Tilápia grelhada com legumes assados.", "produto": "Tilápia", "planejado": 500, "feito": false, "consumido": 0, "baixas": []}, "1119-a": {"data": "2026-11-19", "turno": "almoco", "prato": "Arroz com linguiça fina de frango, milho e cenoura.", "produto": "Linguiça de frango", "planejado": 500, "feito": false, "consumido": 0, "baixas": []}, "1119-j": {"data": "2026-11-19", "turno": "jantar", "prato": "Sopa de lentilha canadense com linguiça calabresa, chuchu, cenoura e couve.", "produto": "Linguiça calabresa", "planejado": 200, "feito": false, "consumido": 0, "baixas": []}, "1120-a": {"data": "2026-11-20", "turno": "almoco", "prato": "Paleta bovina desfiada com cenoura, arroz branco e brócolis no vapor.", "produto": "Paleta bovina", "planejado": 900, "feito": false, "consumido": 0, "baixas": []}}, "config": {"regras": {"itens": ["Planejar almoço e jantar de segunda a quinta; às sextas-feiras, somente almoço. Não programar refeições aos sábados e domingos.", "Servir salada de alface e tomate como acompanhamento habitual dos almoços e, quando combinar, dos jantares. Repor vegetais frescos conforme necessário.", "Variar carnes bovinas, frango, linguiças e peixe; priorizar jantares mais leves, com sopas, quinoa, panqueca sem glúten, frango e macarrão de lentilha.", "Evitar acompanhamentos ricos em amido em excesso no mesmo prato (por exemplo, não juntar mandioca, arroz e batata-salsa).", "Batata-salsa é perecível: usar logo ou reservar e congelar a porção para o purê.", "Preparar brócolis e couve-flor preferencialmente no vapor; refogar o chuchu separadamente da carne de panela.", "Usar ingredientes sem glúten na panqueca, berinjela empanada, farofa e batata palha; conferir rótulos e evitar contaminação cruzada.", "Controlar estoque por produto: peso inicial, quantidade planejada, consumo confirmado e saldo. Não baixar quantidades apenas porque a refeição está no cardápio.", "Confirmar peso das embalagens estimadas e número de pessoas antes de consolidar porções. Manter conservação e descongelamento seguros."]}}};
+let store = null, subs = [], saveOk = true;
+function commit() {
+  try { localStorage.setItem(KEY, JSON.stringify(store)); saveOk = true; } catch (e) { if (saveOk) toast("Este navegador não está guardando os dados. Faça uma cópia na aba Regras."); saveOk = false; }
+  for (const f of subs) f(); snapRender();
+}
+const done = () => { commit(); return Promise.resolve(); };
+db = {
+  collection: n => ({
+    add(d) { const id = "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); (store[n] = store[n] || {})[id] = d; return done(); },
+    onSnapshot(cb) { const f = () => cb({ docs: Object.entries(store[n] || {}).map(([id, d]) => ({ id, data: () => d })) }); subs.push(f); f(); }
+  }),
+  doc: p => { const [n, id] = p.split("/"); const col = () => (store[n] = store[n] || {});
+    return {
+      update(d) { if (!col()[id]) return Promise.reject({ code: "not_found" }); Object.assign(col()[id], d); return done(); },
+      set(d) { col()[id] = d; return done(); },
+      delete() { delete col()[id]; return done(); },
+      onSnapshot(cb) { const f = () => cb({ exists: !!col()[id], data: () => col()[id] }); subs.push(f); f(); }
+    }; }
+};
+function start() {
+  try { store = JSON.parse(localStorage.getItem(KEY)); } catch (e) { store = null; }
+  if (!store || typeof store.carnes !== "object" || typeof store.refeicoes !== "object") store = SEED;
+  db.collection("carnes").onSnapshot(s => { S.carnes = s.docs.map(d => ({ id: d.id, ...d.data() })); S.ready.c = true; });
+  db.collection("refeicoes").onSnapshot(s => { S.refeicoes = s.docs.map(d => ({ id: d.id, ...d.data() })); S.ready.r = true; });
+  db.doc("config/regras").onSnapshot(s => { S.regras = (s.exists && s.data().itens) || []; });
+  render();
+}
+start();
+</script>
