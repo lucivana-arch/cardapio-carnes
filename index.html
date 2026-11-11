@@ -1,7 +1,15 @@
-<title>Cardápio e Carnes Offline</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Cardápio e Carnes</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
 /* Layout: coluna única de celular; abas fixas no topo; pesos em fonte de etiqueta de balança */
 :root{
   --bg:#f2f5f4; --surface:#ffffff; --sunk:#e8edeb; --ink:#1b2422; --muted:#5b6865; --line:#d6dedb;
@@ -87,11 +95,13 @@ textarea{min-height:72px;resize:vertical}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px);z-index:20}
 @media (max-width:420px){ .grid2{grid-template-columns:1fr} }
 </style>
-
-<div class="wrap">
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+</head>
+<body><div class="wrap">
   <header>
     <h1>Cardápio e Carnes</h1>
-    <p class="sub">Planejamento das refeições e baixa do estoque só quando o consumo é confirmado. Os dados ficam guardados neste navegador.</p>
+    <p class="sub">Planejamento das refeições e baixa do estoque só quando o consumo é confirmado. Os dados ficam guardados online e aparecem em todos os celulares que usam o mesmo código.</p>
   </header>
   <div class="stats" id="stats"></div>
   <nav class="tabs" role="tablist">
@@ -153,12 +163,14 @@ function render() {
   ui.pending = false;
   for (const b of document.querySelectorAll(".tab")) b.setAttribute("aria-selected", b.dataset.tab === ui.tab);
   const v = document.getElementById("view"), st = document.getElementById("stats");
+  document.querySelector(".tabs").hidden = !!S.gate;
+  if (S.gate) { st.innerHTML = ""; v.innerHTML = S.gate; return; }
   if (S.error) { st.innerHTML = ""; v.innerHTML = `<div class="empty">${esc(S.error)}</div>`; return; }
   if (!S.ready.c || !S.ready.r) { st.innerHTML = ""; v.innerHTML = `<div class="empty">Carregando cardápio e estoque…</div>`; return; }
   const ps = produtos(), al = alertas();
   const saldo = ps.reduce((a, p) => a + p.saldo, 0), plan = ps.reduce((a, p) => a + p.planejado, 0);
   const pend = S.refeicoes.filter(r => !r.feito).length;
-  st.innerHTML = `<span><b>${kg(saldo)}</b> em estoque</span><span><b>${kg(plan)}</b> reservado no cardápio</span><span><b>${pend}</b> refeições a fazer</span>`;
+  st.innerHTML = `<span><b>${kg(saldo)}</b> em estoque</span><span><b>${kg(plan)}</b> reservado no cardápio</span><span><b>${pend}</b> refeições a fazer</span>${S.online === false ? `<span style="color:var(--warn)">Sem conexão. Não feche a página até voltar.</span>` : ""}`;
   document.getElementById("tab-estoque").innerHTML = "Estoque" + (al.length ? `<span class="badge">${al.length}</span>` : "");
   v.innerHTML = ui.tab === "cardapio" ? viewCardapio() : ui.tab === "estoque" ? viewEstoque(ps, al) : viewRegras();
 }
@@ -279,8 +291,8 @@ function viewRegras0() {
 function viewRegras() {
   if (ui.form === "regras") return viewRegras0();
   return viewRegras0() + `<div class="prod" style="margin-top:20px"><h2>Cópia de segurança</h2>
-    <p class="prato" style="color:var(--muted);font-size:14px">Os dados ficam só neste navegador e somem se o histórico do site for apagado. Copie os dados de vez em quando e guarde o texto (em uma nota ou mensagem). Para levar a outro aparelho, cole o texto lá e restaure.</p>
-    <div class="row"><button class="btn" data-act="bk-copy">Copiar dados</button></div>
+    <p class="prato" style="color:var(--muted);font-size:14px">Os dados ficam guardados online. Mesmo assim, copie os dados de vez em quando e guarde o texto em uma nota. Se algo se perder, cole o texto na caixa abaixo e restaure.</p>
+    <div class="row"><button class="btn" data-act="bk-copy">Copiar dados</button><button class="btn quiet" data-act="code-change">Trocar código da casa</button></div>
     <label>Colar dados para restaurar<textarea id="bk-txt"></textarea></label>
     <div class="row"><button class="btn danger" data-act="bk-restore">${ui.confirmDel === "bk" ? "Confirmar: substituir tudo" : "Restaurar"}</button></div></div>`;
 }
@@ -292,13 +304,17 @@ function close() { ui.form = null; ui.id = null; ui.confirmDel = null; ui.gen = 
 async function act(a, id) {
   const meal = S.refeicoes.find(r => r.id === id), pk = S.carnes.find(c => c.id === id);
   if (a === "cancel") return close();
+  if (a === "code-ok") { const c = val("cd").trim().toLowerCase(); if (!/^[a-z0-9_-]{6,40}$/.test(c)) return gate("Use de 6 a 40 letras, números, hífen ou sublinhado, sem espaços.", c); return connect(c, false); }
+  if (a === "code-create") return connect(ui.pendingCode, true);
+  if (a === "code-back") return gate("", ui.pendingCode);
+  if (a === "code-change") { try { localStorage.removeItem(CODE_KEY); } catch (e) {} return location.reload(); }
   if (a === "bk-copy") { const txt = JSON.stringify(store), box = document.getElementById("bk-txt");
     try { await navigator.clipboard.writeText(txt); toast("Dados copiados"); } catch (e) { box.value = txt; box.select(); toast("Selecione e copie o texto da caixa"); } return; }
   if (a === "bk-restore") { let d = null; const txt = val("bk-txt");
     try { d = JSON.parse(txt); } catch (e) {}
     if (!d || typeof d.carnes !== "object" || typeof d.refeicoes !== "object") return toast("O texto colado não é uma cópia válida.");
     if (ui.confirmDel !== "bk") { ui.confirmDel = "bk"; render(); document.getElementById("bk-txt").value = txt; return; }
-    store = { carnes: d.carnes || {}, refeicoes: d.refeicoes || {}, config: d.config || {} }; ui.confirmDel = null; commit(); return toast("Dados restaurados"); }
+    ui.confirmDel = null; return run(() => root().set({ carnes: d.carnes || {}, refeicoes: d.refeicoes || {}, config: d.config || {} }), "Dados restaurados"); }
   if (a === "meal-new") { ui.form = "meal"; ui.id = "new"; return render(); }
   if (a === "meal-edit") { ui.form = "meal"; ui.id = id; ui.confirmDel = null; return render(); }
   if (a === "baixa-open") { ui.form = "baixa"; ui.id = id; return render(); }
@@ -318,12 +334,12 @@ async function act(a, id) {
     const baixas = [...document.querySelectorAll("[data-bx]")].map(i => ({ id: i.dataset.bx, g: int(i.value) })).filter(b => b.g > 0);
     for (const b of baixas) { const c = S.carnes.find(x => x.id === b.id); if (!c || b.g > c.saldo) return toast("A quantidade passa do saldo do pacote."); }
     return run(async () => {
-      for (const b of baixas) { const c = S.carnes.find(x => x.id === b.id); await db.doc("carnes/" + b.id).update({ saldo: c.saldo - b.g }); }
+      for (const b of baixas) { const c = S.carnes.find(x => x.id === b.id); await db.doc("carnes/" + b.id).inc("saldo", -b.g); }
       await db.doc("refeicoes/" + id).update({ feito: true, baixas, consumido: baixas.reduce((s, b) => s + b.g, 0) }); close();
     }, "Consumo confirmado");
   }
   if (a === "undo" && meal) return run(async () => {
-    for (const b of meal.baixas || []) { const c = S.carnes.find(x => x.id === b.id); if (c) await db.doc("carnes/" + b.id).update({ saldo: c.saldo + b.g }); }
+    for (const b of meal.baixas || []) { const c = S.carnes.find(x => x.id === b.id); if (c) await db.doc("carnes/" + b.id).inc("saldo", b.g); }
     await db.doc("refeicoes/" + id).update({ feito: false, baixas: [], consumido: 0 });
   }, "Baixa desfeita, saldo devolvido");
   if (a === "pk-freeze" && pk) return run(() => db.doc("carnes/" + id).update({ congelado: !pk.congelado }));
@@ -373,35 +389,75 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("focusout", () => { if (ui.pending) setTimeout(() => { if (ui.pending && !(document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) render(); }, 50); });
 
-/* ---------- dados (guardados no navegador) ---------- */
-const KEY = "cardapio-carnes-v1";
-const SEED = {"carnes": {"paleta-1": {"produto": "Paleta bovina", "rotulo": "Pacote 1,140 kg", "pesoInicial": 1140, "saldo": 1140, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 49,00"}, "paleta-2": {"produto": "Paleta bovina", "rotulo": "Pacote 0,750 kg", "pesoInicial": 750, "saldo": 750, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 32,24"}, "paleta-3": {"produto": "Paleta bovina", "rotulo": "Pacote 1,192 kg", "pesoInicial": 1192, "saldo": 1192, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 51,24"}, "patinho-1": {"produto": "Patinho", "rotulo": "Pacote 0,834 kg", "pesoInicial": 834, "saldo": 834, "validade": "2026-11-18", "congelado": false, "estimado": true, "obs": "R$ 40,02; etiqueta borrada na foto, conferir peso"}, "coxao-1": {"produto": "Coxão-mole", "rotulo": "Pacote 1,028 kg", "pesoInicial": 1028, "saldo": 1028, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 50,36"}, "coxao-2": {"produto": "Coxão-mole", "rotulo": "Pacote 1,004 kg", "pesoInicial": 1004, "saldo": 1004, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 49,18"}, "frango-1": {"produto": "Filé de frango", "rotulo": "Pacote 1,272 kg", "pesoInicial": 1272, "saldo": 1272, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 31,78"}, "filesobre-1": {"produto": "Filé de sobrecoxa temperado", "rotulo": "Pacote 0,610 kg", "pesoInicial": 610, "saldo": 610, "validade": "2026-10-31", "congelado": true, "estimado": false, "obs": "R$ 21,34; embalado 12/10; tempero sem lista de ingredientes, confirmar glúten"}, "sobrecoxa-1": {"produto": "Sobrecoxa temperada", "rotulo": "Pacote 0,574 kg", "pesoInicial": 574, "saldo": 574, "validade": "2026-11-01", "congelado": true, "estimado": false, "obs": "embalado 13/10; tempero sem lista de ingredientes, confirmar glúten"}, "pernil-1": {"produto": "Linguiça de pernil (suína)", "rotulo": "Jerivá, bandeja ~1 kg", "pesoInicial": 1000, "saldo": 1000, "validade": "", "congelado": true, "estimado": true, "obs": "rótulo: não contém glúten; pesar"}, "lingfrango-1": {"produto": "Linguiça de frango", "rotulo": "Pacote 1 de 500 g", "pesoInicial": 500, "saldo": 500, "validade": "", "congelado": false, "estimado": true, "obs": "conferir rótulo (glúten) e validade"}, "lingfrango-2": {"produto": "Linguiça de frango", "rotulo": "Pacote 2 de 500 g", "pesoInicial": 500, "saldo": 500, "validade": "", "congelado": false, "estimado": true, "obs": "conferir rótulo (glúten) e validade"}}, "refeicoes": {"1110-a": {"data": "2026-11-10", "turno": "almoco", "prato": "Paleta bovina com mandioca na panela de pressão, arroz branco, couve refogada e chuchu refogado.", "produto": "Paleta bovina", "planejado": 750, "feito": false, "consumido": 0, "baixas": []}, "1110-j": {"data": "2026-11-10", "turno": "jantar", "prato": "Sopa de paleta bovina com cenoura, chuchu, abóbora e batata-salsa picadinha.", "produto": "Paleta bovina", "planejado": 400, "feito": false, "consumido": 0, "baixas": []}, "1111-a": {"data": "2026-11-11", "turno": "almoco", "prato": "Frango com creme de milho, arroz branco e couve-flor no vapor.", "produto": "Filé de frango", "planejado": 450, "feito": false, "consumido": 0, "baixas": []}, "1111-j": {"data": "2026-11-11", "turno": "jantar", "prato": "Salada de quinoa com frango desfiado, castanha de caju, milho e ervilha.", "produto": "Filé de frango", "planejado": 270, "feito": false, "consumido": 0, "baixas": []}, "1112-a": {"data": "2026-11-12", "turno": "almoco", "prato": "Arroz com linguiça de porco, cenoura e cheiro-verde, acompanhado de jiló refogado.", "produto": "Linguiça de pernil (suína)", "planejado": 500, "feito": false, "consumido": 0, "baixas": []}, "1112-j": {"data": "2026-11-12", "turno": "jantar", "prato": "Panqueca sem glúten de carne moída com molho de tomate caseiro.", "produto": "Patinho", "planejado": 400, "feito": false, "consumido": 0, "baixas": []}, "1113-a": {"data": "2026-11-13", "turno": "almoco", "prato": "Strogonoff de frango, arroz branco, batata palha sem glúten e brócolis no vapor.", "produto": "Filé de frango", "planejado": 550, "feito": false, "consumido": 0, "baixas": []}, "1116-a": {"data": "2026-11-16", "turno": "almoco", "prato": "Bife de coxão-mole acebolado, arroz branco, feijão e berinjela empanada sem glúten.", "produto": "Coxão-mole", "planejado": 1000, "feito": false, "consumido": 0, "baixas": []}, "1116-j": {"data": "2026-11-16", "turno": "jantar", "prato": "Macarrão proteico de lentilha vermelha com molho bolonhesa caseiro.", "produto": "Patinho", "planejado": 430, "feito": false, "consumido": 0, "baixas": []}, "1117-a": {"data": "2026-11-17", "turno": "almoco", "prato": "Carne de panela com cenoura, chuchu refogado separado, arroz branco e farofa de ovo sem glúten.", "produto": "Paleta bovina", "planejado": 1000, "feito": false, "consumido": 0, "baixas": []}, "1117-j": {"data": "2026-11-17", "turno": "jantar", "prato": "Filé de sobrecoxa temperado assado com brócolis e couve-flor no vapor.", "produto": "Filé de sobrecoxa temperado", "planejado": 610, "feito": false, "consumido": 0, "baixas": []}, "1118-a": {"data": "2026-11-18", "turno": "almoco", "prato": "Sobrecoxa temperada assada, purê de batata-salsa e arroz com brócolis.", "produto": "Sobrecoxa temperada", "planejado": 574, "feito": false, "consumido": 0, "baixas": []}, "1118-j": {"data": "2026-11-18", "turno": "jantar", "prato": "Tilápia grelhada com legumes assados.", "produto": "Tilápia", "planejado": 500, "feito": false, "consumido": 0, "baixas": []}, "1119-a": {"data": "2026-11-19", "turno": "almoco", "prato": "Arroz com linguiça fina de frango, milho e cenoura.", "produto": "Linguiça de frango", "planejado": 500, "feito": false, "consumido": 0, "baixas": []}, "1119-j": {"data": "2026-11-19", "turno": "jantar", "prato": "Sopa de lentilha canadense com linguiça calabresa, chuchu, cenoura e couve.", "produto": "Linguiça calabresa", "planejado": 200, "feito": false, "consumido": 0, "baixas": []}, "1120-a": {"data": "2026-11-20", "turno": "almoco", "prato": "Paleta bovina desfiada com cenoura, arroz branco e brócolis no vapor.", "produto": "Paleta bovina", "planejado": 900, "feito": false, "consumido": 0, "baixas": []}}, "config": {"regras": {"itens": ["Planejar almoço e jantar de segunda a quinta; às sextas-feiras, somente almoço. Não programar refeições aos sábados e domingos.", "Servir salada de alface e tomate como acompanhamento habitual dos almoços e, quando combinar, dos jantares. Repor vegetais frescos conforme necessário.", "Variar carnes bovinas, frango, linguiças e peixe; priorizar jantares mais leves, com sopas, quinoa, panqueca sem glúten, frango e macarrão de lentilha.", "Evitar acompanhamentos ricos em amido em excesso no mesmo prato (por exemplo, não juntar mandioca, arroz e batata-salsa).", "Batata-salsa é perecível: usar logo ou reservar e congelar a porção para o purê.", "Preparar brócolis e couve-flor preferencialmente no vapor; refogar o chuchu separadamente da carne de panela.", "Usar ingredientes sem glúten na panqueca, berinjela empanada, farofa e batata palha; conferir rótulos e evitar contaminação cruzada.", "Controlar estoque por produto: peso inicial, quantidade planejada, consumo confirmado e saldo. Não baixar quantidades apenas porque a refeição está no cardápio.", "Confirmar peso das embalagens estimadas e número de pessoas antes de consolidar porções. Manter conservação e descongelamento seguros."]}}};
-let store = null, subs = [], saveOk = true;
-function commit() {
-  try { localStorage.setItem(KEY, JSON.stringify(store)); saveOk = true; } catch (e) { if (saveOk) toast("Este navegador não está guardando os dados. Faça uma cópia na aba Regras."); saveOk = false; }
-  for (const f of subs) f(); snapRender();
-}
-const done = () => { commit(); return Promise.resolve(); };
-db = {
-  collection: n => ({
-    add(d) { const id = "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); (store[n] = store[n] || {})[id] = d; return done(); },
-    onSnapshot(cb) { const f = () => cb({ docs: Object.entries(store[n] || {}).map(([id, d]) => ({ id, data: () => d })) }); subs.push(f); f(); }
-  }),
-  doc: p => { const [n, id] = p.split("/"); const col = () => (store[n] = store[n] || {});
-    return {
-      update(d) { if (!col()[id]) return Promise.reject({ code: "not_found" }); Object.assign(col()[id], d); return done(); },
-      set(d) { col()[id] = d; return done(); },
-      delete() { delete col()[id]; return done(); },
-      onSnapshot(cb) { const f = () => cb({ exists: !!col()[id], data: () => col()[id] }); subs.push(f); f(); }
-    }; }
+/* ---------- dados (Firebase Realtime Database) ---------- */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAYJ-6YSC8ATZfNoFVTDgRmm4m842ADOVo",
+  authDomain: "cardapio-carnes.firebaseapp.com",
+  databaseURL: "https://cardapio-carnes-default-rtdb.firebaseio.com",
+  projectId: "cardapio-carnes",
+  storageBucket: "cardapio-carnes.firebasestorage.app",
+  messagingSenderId: "599986883141",
+  appId: "1:599986883141:web:ada6593c28ed86d005312c"
 };
-function start() {
-  try { store = JSON.parse(localStorage.getItem(KEY)); } catch (e) { store = null; }
-  if (!store || typeof store.carnes !== "object" || typeof store.refeicoes !== "object") store = SEED;
-  db.collection("carnes").onSnapshot(s => { S.carnes = s.docs.map(d => ({ id: d.id, ...d.data() })); S.ready.c = true; });
-  db.collection("refeicoes").onSnapshot(s => { S.refeicoes = s.docs.map(d => ({ id: d.id, ...d.data() })); S.ready.r = true; });
-  db.doc("config/regras").onSnapshot(s => { S.regras = (s.exists && s.data().itens) || []; });
+const CODE_KEY = "cardapio-codigo";
+const SEED = {"carnes": {"paleta-1": {"produto": "Paleta bovina", "rotulo": "Pacote 1,140 kg", "pesoInicial": 1140, "saldo": 1140, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 49,00"}, "paleta-2": {"produto": "Paleta bovina", "rotulo": "Pacote 0,750 kg", "pesoInicial": 750, "saldo": 750, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 32,24"}, "paleta-3": {"produto": "Paleta bovina", "rotulo": "Pacote 1,192 kg", "pesoInicial": 1192, "saldo": 1192, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 51,24"}, "patinho-1": {"produto": "Patinho", "rotulo": "Pacote 0,834 kg", "pesoInicial": 834, "saldo": 834, "validade": "2026-11-18", "congelado": false, "estimado": true, "obs": "R$ 40,02; etiqueta borrada na foto, conferir peso"}, "coxao-1": {"produto": "Coxão-mole", "rotulo": "Pacote 1,028 kg", "pesoInicial": 1028, "saldo": 1028, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 50,36"}, "coxao-2": {"produto": "Coxão-mole", "rotulo": "Pacote 1,004 kg", "pesoInicial": 1004, "saldo": 1004, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 49,18"}, "frango-1": {"produto": "Filé de frango", "rotulo": "Pacote 1,272 kg", "pesoInicial": 1272, "saldo": 1272, "validade": "2026-11-18", "congelado": false, "estimado": false, "obs": "R$ 31,78"}, "filesobre-1": {"produto": "Filé de sobrecoxa temperado", "rotulo": "Pacote 0,610 kg", "pesoInicial": 610, "saldo": 610, "validade": "2026-10-31", "congelado": true, "estimado": false, "obs": "R$ 21,34; embalado 12/10; tempero sem lista de ingredientes, confirmar glúten"}, "sobrecoxa-1": {"produto": "Sobrecoxa temperada", "rotulo": "Pacote 0,574 kg", "pesoInicial": 574, "saldo": 574, "validade": "2026-11-01", "congelado": true, "estimado": false, "obs": "embalado 13/10; tempero sem lista de ingredientes, confirmar glúten"}, "pernil-1": {"produto": "Linguiça de pernil (suína)", "rotulo": "Jerivá, bandeja ~1 kg", "pesoInicial": 1000, "saldo": 1000, "validade": "", "congelado": true, "estimado": true, "obs": "rótulo: não contém glúten; pesar"}, "lingfrango-1": {"produto": "Linguiça de frango", "rotulo": "Pacote 1 de 500 g", "pesoInicial": 500, "saldo": 500, "validade": "", "congelado": false, "estimado": true, "obs": "conferir rótulo (glúten) e validade"}, "lingfrango-2": {"produto": "Linguiça de frango", "rotulo": "Pacote 2 de 500 g", "pesoInicial": 500, "saldo": 500, "validade": "", "congelado": false, "estimado": true, "obs": "conferir rótulo (glúten) e validade"}}, "refeicoes": {"1110-a": {"data": "2026-11-10", "turno": "almoco", "prato": "Paleta bovina com mandioca na panela de pressão, arroz branco, couve refogada e chuchu refogado.", "produto": "Paleta bovina", "planejado": 750, "feito": false, "consumido": 0, "baixas": []}, "1110-j": {"data": "2026-11-10", "turno": "jantar", "prato": "Sopa de paleta bovina com cenoura, chuchu, abóbora e batata-salsa picadinha.", "produto": "Paleta bovina", "planejado": 400, "feito": false, "consumido": 0, "baixas": []}, "1111-a": {"data": "2026-11-11", "turno": "almoco", "prato": "Frango com creme de milho, arroz branco e couve-flor no vapor.", "produto": "Filé de frango", "planejado": 450, "feito": false, "consumido": 0, "baixas": []}, "1111-j": {"data": "2026-11-11", "turno": "jantar", "prato": "Salada de quinoa com frango desfiado, castanha de caju, milho e ervilha.", "produto": "Filé de frango", "planejado": 270, "feito": false, "consumido": 0, "baixas": []}, "1112-a": {"data": "2026-11-12", "turno": "almoco", "prato": "Arroz com linguiça de porco, cenoura e cheiro-verde, acompanhado de jiló refogado.", "produto": "Linguiça de pernil (suína)", "planejado": 500, "feito": false, "consumido": 0, "baixas": []}, "1112-j": {"data": "2026-11-12", "turno": "jantar", "prato": "Panqueca sem glúten de carne moída com molho de tomate caseiro.", "produto": "Patinho", "planejado": 400, "feito": false, "consumido": 0, "baixas": []}, "1113-a": {"data": "2026-11-13", "turno": "almoco", "prato": "Strogonoff de frango, arroz branco, batata palha sem glúten e brócolis no vapor.", "produto": "Filé de frango", "planejado": 550, "feito": false, "consumido": 0, "baixas": []}, "1116-a": {"data": "2026-11-16", "turno": "almoco", "prato": "Bife de coxão-mole acebolado, arroz branco, feijão e berinjela empanada sem glúten.", "produto": "Coxão-mole", "planejado": 1000, "feito": false, "consumido": 0, "baixas": []}, "1116-j": {"data": "2026-11-16", "turno": "jantar", "prato": "Macarrão proteico de lentilha vermelha com molho bolonhesa caseiro.", "produto": "Patinho", "planejado": 430, "feito": false, "consumido": 0, "baixas": []}, "1117-a": {"data": "2026-11-17", "turno": "almoco", "prato": "Carne de panela com cenoura, chuchu refogado separado, arroz branco e farofa de ovo sem glúten.", "produto": "Paleta bovina", "planejado": 1000, "feito": false, "consumido": 0, "baixas": []}, "1117-j": {"data": "2026-11-17", "turno": "jantar", "prato": "Filé de sobrecoxa temperado assado com brócolis e couve-flor no vapor.", "produto": "Filé de sobrecoxa temperado", "planejado": 610, "feito": false, "consumido": 0, "baixas": []}, "1118-a": {"data": "2026-11-18", "turno": "almoco", "prato": "Sobrecoxa temperada assada, purê de batata-salsa e arroz com brócolis.", "produto": "Sobrecoxa temperada", "planejado": 574, "feito": false, "consumido": 0, "baixas": []}, "1118-j": {"data": "2026-11-18", "turno": "jantar", "prato": "Tilápia grelhada com legumes assados.", "produto": "Tilápia", "planejado": 500, "feito": false, "consumido": 0, "baixas": []}, "1119-a": {"data": "2026-11-19", "turno": "almoco", "prato": "Arroz com linguiça fina de frango, milho e cenoura.", "produto": "Linguiça de frango", "planejado": 500, "feito": false, "consumido": 0, "baixas": []}, "1119-j": {"data": "2026-11-19", "turno": "jantar", "prato": "Sopa de lentilha canadense com linguiça calabresa, chuchu, cenoura e couve.", "produto": "Linguiça calabresa", "planejado": 200, "feito": false, "consumido": 0, "baixas": []}, "1120-a": {"data": "2026-11-20", "turno": "almoco", "prato": "Paleta bovina desfiada com cenoura, arroz branco e brócolis no vapor.", "produto": "Paleta bovina", "planejado": 900, "feito": false, "consumido": 0, "baixas": []}}, "config": {"regras": {"itens": ["Planejar almoço e jantar de segunda a quinta; às sextas-feiras, somente almoço. Não programar refeições aos sábados e domingos.", "Servir salada de alface e tomate como acompanhamento habitual dos almoços e, quando combinar, dos jantares. Repor vegetais frescos conforme necessário.", "Variar carnes bovinas, frango, linguiças e peixe; priorizar jantares mais leves, com sopas, quinoa, panqueca sem glúten, frango e macarrão de lentilha.", "Evitar acompanhamentos ricos em amido em excesso no mesmo prato (por exemplo, não juntar mandioca, arroz e batata-salsa).", "Batata-salsa é perecível: usar logo ou reservar e congelar a porção para o purê.", "Preparar brócolis e couve-flor preferencialmente no vapor; refogar o chuchu separadamente da carne de panela.", "Usar ingredientes sem glúten na panqueca, berinjela empanada, farofa e batata palha; conferir rótulos e evitar contaminação cruzada.", "Controlar estoque por produto: peso inicial, quantidade planejada, consumo confirmado e saldo. Não baixar quantidades apenas porque a refeição está no cardápio.", "Confirmar peso das embalagens estimadas e número de pessoas antes de consolidar porções. Manter conservação e descongelamento seguros."]}}};
+let root = null, store = { carnes: {}, refeicoes: {}, config: {} };
+
+db = {
+  collection: n => ({ add(d) { return root().child(n).push().set(d); } }),
+  doc: p => { const r = () => root().child(p); return {
+    update: d => r().update(d), set: d => r().set(d), delete: () => r().remove(),
+    inc: (f, n) => r().child(f).transaction(v => (v || 0) + n)
+  }; }
+};
+
+function gate(msg, code) {
+  S.error = "";
+  S.gate = `<div class="prod"><h2>Código da casa</h2>
+    <p class="prato" style="color:var(--muted)">Digite o código combinado com a dona da casa. Ele fica salvo neste aparelho.</p>
+    <label>Código<input id="cd" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(code || "")}"></label>
+    ${msg ? `<div class="alert bad">${esc(msg)}</div>` : ""}
+    <div class="row"><button class="btn primary" data-act="code-ok">Entrar</button></div></div>`;
   render();
+}
+function erroMsg(e) {
+  return e && e.code === "PERMISSION_DENIED" ? "O banco recusou o acesso. Confira se as regras foram publicadas no Firebase." : "Não foi possível conectar. Verifique a internet e abra de novo.";
+}
+const comTempo = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej({ code: "timeout" }), ms))]);
+
+async function connect(code, criar) {
+  S.gate = `<div class="empty">Conectando…</div>`; render();
+  ui.pendingCode = code;
+  root = () => firebase.database().ref("casa/" + code);
+  try {
+    const snap = await comTempo(root().once("value"), 12000);
+    if (!snap.exists()) {
+      if (!criar) {
+        S.gate = `<div class="prod"><h2>Código novo</h2>
+          <p class="prato">Ainda não existe uma casa com o código <b class="num">${esc(code)}</b>.</p>
+          <p class="prato" style="color:var(--muted)">Se você é a dona da casa e está criando agora, toque em Criar. Se não, toque em Voltar e confira o código com ela.</p>
+          <div class="row"><button class="btn primary" data-act="code-create">Criar com o cardápio inicial</button><button class="btn quiet" data-act="code-back">Voltar</button></div></div>`;
+        return render();
+      }
+      await comTempo(root().set(SEED), 12000);
+    }
+  } catch (e) { S.gate = null; S.error = erroMsg(e); return render(); }
+  try { localStorage.setItem(CODE_KEY, code); } catch (e) {}
+  S.gate = null; S.error = "";
+  const fail = e => { S.error = erroMsg(e); render(); };
+  root().child("carnes").on("value", s => { store.carnes = s.val() || {}; S.carnes = Object.entries(store.carnes).map(([id, d]) => ({ id, ...d })); S.ready.c = true; snapRender(); }, fail);
+  root().child("refeicoes").on("value", s => { store.refeicoes = s.val() || {}; S.refeicoes = Object.entries(store.refeicoes).map(([id, d]) => ({ id, ...d })); S.ready.r = true; snapRender(); }, fail);
+  root().child("config").on("value", s => { store.config = s.val() || {}; const it = store.config.regras && store.config.regras.itens; S.regras = Array.isArray(it) ? it : Object.values(it || {}); snapRender(); }, () => {});
+  firebase.database().ref(".info/connected").on("value", s => { S.online = !!s.val(); snapRender(); });
+  render();
+}
+function start() {
+  if (typeof firebase === "undefined") { S.error = "Não foi possível carregar o serviço de dados. Verifique a internet e abra de novo."; return render(); }
+  firebase.initializeApp(FIREBASE_CONFIG);
+  let code = ""; try { code = localStorage.getItem(CODE_KEY) || ""; } catch (e) {}
+  if (code) connect(code, false); else gate("", "");
 }
 start();
 </script>
+</body>
+</html>
